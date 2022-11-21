@@ -10,7 +10,7 @@ use alvr_sockets::AUDIO;
 use alvr_sockets::{
     spawn_cancelable, ClientConfigPacket, ClientControlPacket, ClientHandshakePacket, Haptics,
     HeadsetInfoPacket, PeerType, PrivateIdentity, ProtoControlSocket, ServerControlPacket,
-    ServerHandshakePacket, StreamSocketBuilder, VideoFrameHeaderPacket, HAPTICS, INPUT, VIDEO,
+    ServerHandshakePacket, StreamSocketBuilder, VideoFrameHeaderPacket, ClientConnectionResult, HAPTICS, INPUT, VIDEO,
 };
 
 use futures::future::BoxFuture;
@@ -164,8 +164,13 @@ async fn connection_pipeline(
             }
         } => pair
     };
+    let hi = headset_info.clone();
 
-    trace_err!(proto_socket.send(&(headset_info, server_ip)).await)?;
+    //trace_err!(proto_socket.send(&(headset_info, server_ip)).await)?;
+    trace_err!(proto_socket.send(&ClientConnectionResult::ServerAccepted {
+                headset_info: hi,
+                server_ip,
+    }).await)?;
     let config_packet = trace_err!(proto_socket.recv::<ClientConfigPacket>().await)?;
 
     let (control_sender, mut control_receiver) = proto_socket.split();
@@ -690,7 +695,7 @@ async fn connection_pipeline(
                                 // )?;
                                 break Ok(());
                             }
-                            Ok(ServerControlPacket::TimeSync(data)) => {
+                            /*Ok(ServerControlPacket::TimeSync(data)) => {
                                 let time_sync = TimeSync {
                                     type_: 7, // ALVR_PACKET_TYPE_TIME_SYNC
                                     mode: data.mode,
@@ -718,7 +723,7 @@ async fn connection_pipeline(
                                 });
 
                                 legacy_receive_data_sender.lock().await.send(buffer).ok();
-                            },
+                            },*/
                             Ok(_) => (),
                             Err(e) => {
                                 info!("Server disconnected. Cause: {}", e);

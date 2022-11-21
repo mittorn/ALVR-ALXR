@@ -256,6 +256,7 @@ pub fn init_connections(sys_properties: &ALXRSystemProperties) {
             recommended_eye_height: sys_properties.recommendedEyeHeight as _,
             available_refresh_rates,
             preferred_refresh_rate,
+            microphone_sample_rate: 48000,
             reserved: format!("{}", *ALVR_VERSION),
         };
 
@@ -327,8 +328,8 @@ pub extern "C" fn input_send(data_ptr: *const TrackingInfo) {
                     MotionData {
                         orientation: from_tracking_quat(&data.HeadPose_Pose_Orientation),
                         position: from_tracking_vector3(&data.HeadPose_Pose_Position),
-                        linear_velocity: None,
-                        angular_velocity: None,
+                        linear_velocity: Vec3::ZERO,
+                        angular_velocity: Vec3::ZERO,
                     },
                 ),
                 (
@@ -344,12 +345,12 @@ pub extern "C" fn input_send(data_ptr: *const TrackingInfo) {
                         } else {
                             &data.controller[0].position
                         }),
-                        linear_velocity: Some(from_tracking_vector3(
+                        linear_velocity: from_tracking_vector3(
                             &data.controller[0].linearVelocity,
-                        )),
-                        angular_velocity: Some(from_tracking_vector3(
+                        ),
+                        angular_velocity: from_tracking_vector3(
                             &data.controller[0].angularVelocity,
-                        )),
+                        ),
                     },
                 ),
                 (
@@ -365,19 +366,19 @@ pub extern "C" fn input_send(data_ptr: *const TrackingInfo) {
                         } else {
                             &data.controller[1].position
                         }),
-                        linear_velocity: Some(from_tracking_vector3(
+                        linear_velocity: from_tracking_vector3(
                             &data.controller[1].linearVelocity,
-                        )),
-                        angular_velocity: Some(from_tracking_vector3(
+                        ),
+                        angular_velocity: from_tracking_vector3(
                             &data.controller[1].angularVelocity,
-                        )),
+                        ),
                     },
                 ),
             ],
             left_hand_tracking: None,
             right_hand_tracking: None,
-            button_values: std::collections::HashMap::new(), // unused for now
-            legacy: LegacyInput {
+//            button_values: std::collections::HashMap::new(), // unused for now
+            /*legacy: LegacyInput {
                 mounted: data.mounted,
                 controllers: [
                     LegacyController {
@@ -452,7 +453,7 @@ pub extern "C" fn input_send(data_ptr: *const TrackingInfo) {
                         hand_finger_confience: data.controller[1].handFingerConfidences,
                     },
                 ],
-            },
+            },*/
         };
         sender.send(input).ok();
     }

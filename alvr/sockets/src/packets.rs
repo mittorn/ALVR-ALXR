@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, time::Duration, net::IpAddr};
 
 use crate::StreamId;
 use alvr_common::{
@@ -45,10 +45,18 @@ pub struct HeadsetInfoPacket {
     pub recommended_eye_height: u32,
     pub available_refresh_rates: Vec<f32>,
     pub preferred_refresh_rate: f32,
-
+	pub microphone_sample_rate: u32,
     // reserved field is used to add features in a minor release that otherwise would break the
     // packets schema
     pub reserved: String,
+}
+#[derive(Serialize, Deserialize)]
+pub enum ClientConnectionResult {
+    ServerAccepted {
+        headset_info: HeadsetInfoPacket,
+        server_ip: IpAddr,
+    },
+    ClientStandby,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -68,7 +76,7 @@ pub enum ServerControlPacket {
     StartStream,
     Restarting,
     KeepAlive,
-    TimeSync(TimeSyncPacket), // legacy
+    //TimeSync(TimeSyncPacket), // legacy
     Reserved(String),
     ReservedBuffer(Vec<u8>),
 }
@@ -86,6 +94,11 @@ pub struct BatteryPacket {
     pub gauge_value: f32, // range [0, 1]
     pub is_plugged: bool,
 }
+#[derive(Serialize, Deserialize)]
+pub enum ButtonValue {
+    Binary(bool),
+    Scalar(f32),
+}
 
 #[derive(Serialize, Deserialize)]
 pub enum ClientControlPacket {
@@ -97,6 +110,8 @@ pub enum ClientControlPacket {
     Battery(BatteryPacket),
     TimeSync(TimeSyncPacket), // legacy
     VideoErrorReport,         // legacy
+    Button { path_id: u64, value: ButtonValue },
+    ActiveInteractionProfile { device_id: u64, profile_id: u64 },
     Reserved(String),
     ReservedBuffer(Vec<u8>),
 }
@@ -133,18 +148,13 @@ pub struct TimeSyncPacket {
     pub tracking_recv_frame_index: u64,
 }
 
-#[derive(Serialize, Deserialize)]
-pub enum ButtonValue {
-    Binary(bool),
-    Scalar(f32),
-}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MotionData {
     pub orientation: Quat,
     pub position: Vec3,
-    pub linear_velocity: Option<Vec3>,
-    pub angular_velocity: Option<Vec3>,
+    pub linear_velocity: Vec3,
+    pub angular_velocity: Vec3,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -178,8 +188,8 @@ pub struct Input {
     pub device_motions: Vec<(u64, MotionData)>,
     pub left_hand_tracking: Option<HandTrackingInput>, // unused for now
     pub right_hand_tracking: Option<HandTrackingInput>, // unused for now
-    pub button_values: HashMap<u64, ButtonValue>,      // unused for now
-    pub legacy: LegacyInput,
+//    pub button_values: HashMap<u64, ButtonValue>,      // unused for now
+//    pub legacy: LegacyInput,
 }
 
 #[derive(Serialize, Deserialize)]
