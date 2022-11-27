@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration, net::IpAddr};
 
 use crate::StreamId;
 use alvr_common::{
-    glam::{Quat, Vec2, Vec3},
+    glam::{Quat, Vec2, UVec2, Vec3},
     semver::Version,
 };
 use alvr_session::Fov;
@@ -50,11 +50,22 @@ pub struct HeadsetInfoPacket {
     // packets schema
     pub reserved: String,
 }
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct VideoStreamingCapabilities {
+    pub default_view_resolution: UVec2,
+    pub supported_refresh_rates: Vec<f32>,
+    pub microphone_sample_rate: u32,
+}
+
+
 #[derive(Serialize, Deserialize)]
 pub enum ClientConnectionResult {
     ServerAccepted {
-        headset_info: HeadsetInfoPacket,
+        //headset_info: HeadsetInfoPacket,
+        display_name: String,
         server_ip: IpAddr,
+        streaming_capabilities: Option<VideoStreamingCapabilities>,
     },
     ClientStandby,
 }
@@ -62,18 +73,22 @@ pub enum ClientConnectionResult {
 #[derive(Serialize, Deserialize)]
 pub struct ClientConfigPacket {
     pub session_desc: String, // transfer session as string to allow for extrapolation
-    pub dashboard_url: String,
-    pub eye_resolution_width: u32,
-    pub eye_resolution_height: u32,
+    pub view_resolution: UVec2,
     pub fps: f32,
     pub game_audio_sample_rate: u32,
-    pub reserved: String,
-    pub server_version: Option<Version>,
+    //pub dashboard_url: String,
+    //pub eye_resolution_width: u32,
+    //pub eye_resolution_height: u32,
+    //pub fps: f32,
+    //pub game_audio_sample_rate: u32,
+    //pub reserved: String,
+    //pub server_version: Option<Version>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub enum ServerControlPacket {
     StartStream,
+    InitializeDecoder { config_buffer: Vec<u8> },
     Restarting,
     KeepAlive,
     //TimeSync(TimeSyncPacket), // legacy
@@ -108,7 +123,7 @@ pub enum ClientControlPacket {
     StreamReady,
     ViewsConfig(ViewsConfig),
     Battery(BatteryPacket),
-    TimeSync(TimeSyncPacket), // legacy
+    //TimeSync(TimeSyncPacket), // legacy
     VideoErrorReport,         // legacy
     Button { path_id: u64, value: ButtonValue },
     ActiveInteractionProfile { device_id: u64, profile_id: u64 },

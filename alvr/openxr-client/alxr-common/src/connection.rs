@@ -10,11 +10,13 @@ use alvr_sockets::AUDIO;
 use alvr_sockets::{
     spawn_cancelable, ClientConfigPacket, ClientControlPacket, ClientHandshakePacket, Haptics,
     HeadsetInfoPacket, PeerType, PrivateIdentity, ProtoControlSocket, ServerControlPacket,
-    ServerHandshakePacket, StreamSocketBuilder, VideoFrameHeaderPacket, ClientConnectionResult, HAPTICS, INPUT, VIDEO,
+    ServerHandshakePacket, StreamSocketBuilder, VideoFrameHeaderPacket, ClientConnectionResult, VideoStreamingCapabilities,
+   HAPTICS, INPUT, VIDEO,
 };
 
 use futures::future::BoxFuture;
 use glam::Vec2;
+use glam::UVec2;
 use serde_json as json;
 use settings_schema::Switch;
 use std::{
@@ -164,17 +166,25 @@ async fn connection_pipeline(
             }
         } => pair
     };
-    let hi = headset_info.clone();
+    //let hi = headset_info.clone();
+    let sc = VideoStreamingCapabilities {
+        default_view_resolution: UVec2::new(headset_info.recommended_eye_width,headset_info.recommended_eye_height),
+        supported_refresh_rates: headset_info.available_refresh_rates.clone(),
+        microphone_sample_rate: headset_info.microphone_sample_rate
+  
+    };
 
     //trace_err!(proto_socket.send(&(headset_info, server_ip)).await)?;
     trace_err!(proto_socket.send(&ClientConnectionResult::ServerAccepted {
-                headset_info: hi,
+                display_name: "ALXR".into(),
                 server_ip,
+                streaming_capabilities: Some(sc),
     }).await)?;
     let config_packet = trace_err!(proto_socket.recv::<ClientConfigPacket>().await)?;
 
     let (control_sender, mut control_receiver) = proto_socket.split();
     let control_sender = Arc::new(Mutex::new(control_sender));
+    println!("Control received");
 
     match control_receiver.recv().await {
         Ok(ServerControlPacket::StartStream) => {
@@ -187,6 +197,31 @@ async fn connection_pipeline(
             // )?;
             println!("{0}", STREAM_STARTING_MESSAGE);
         }
+        Ok(ServerControlPacket::InitializeDecoder { config_buffer }) => {
+                println!("Config received");
+                unsafe {
+                let mut buffer : Vec<u8> = Vec::with_capacity(1024 as usize); //= [0_u8; 1024].to_vec();
+                let header = VideoFrame {
+                    type_: 9, // ALVR_PACKET_TYPE_VIDEO_FRAME
+                    packetCounter: 0,//packet.header.packet_counter,
+                    trackingFrameIndex: 0,//packet.header.tracking_frame_index,
+                    videoFrameIndex: 0,//packet.header.video_frame_index,
+                    sentTime: 0,//packet.header.sent_time,
+                    frameByteSize: config_buffer.len() as u32,//packet.header.frame_byte_size,
+                    fecIndex: 0,//packet.header.fec_index,
+                    fecPercentage: 0,//packet.header.fec_percentage,
+                };
+
+                buffer[..std::mem::size_of::<VideoFrame>()].copy_from_slice(unsafe {
+                    &std::mem::transmute::<_, [u8; std::mem::size_of::<VideoFrame>()]>(header)
+                });
+                buffer[std::mem::size_of::<VideoFrame>()..].copy_from_slice(&config_buffer);
+
+                //legacy_receive_data_sender.lock().await.send(buffer).ok();
+                crate::alxr_on_receive(buffer.as_ptr(), std::mem::size_of::<VideoFrame>() as u32 + config_buffer.len() as u32); };
+        //decoder::create_decoder(config_buffer);
+        }
+
         Ok(ServerControlPacket::Restarting) => {
             info!("Server restarting");
             //set_loading_message(&*java_vm, &*activity_ref, hostname, SERVER_RESTART_MESSAGE)?;
@@ -213,6 +248,7 @@ async fn connection_pipeline(
             return Ok(());
         }
     }
+    println!("Control received after");
 
     let settings = {
         let mut session_desc = SessionDesc::default();
@@ -281,15 +317,15 @@ async fn connection_pipeline(
     // assert!((config_packet.eye_resolution_height % headset_info.recommended_eye_height) == 0);
     println!(
         "selected eye resolution: w:{0} h:{1}",
-        config_packet.eye_resolution_width, config_packet.eye_resolution_height
+        config_packet.view_resolution[0], config_packet.view_resolution[1]
     );
     //println!("setting display refresh to {0}Hz", config_packet.fps);
     unsafe {
         crate::alxr_set_stream_config(crate::ALXRStreamConfig {
             trackingSpaceType: ALXRTrackingSpace_StageRefSpace,
             renderConfig: crate::ALXRRenderConfig {
-                eyeWidth: config_packet.eye_resolution_width,
-                eyeHeight: config_packet.eye_resolution_height,
+                eyeWidth: config_packet.view_resolution[0],
+                eyeHeight: config_packet.view_resolution[1],
                 refreshRate: config_packet.fps,
 
                 foveationCenterSizeX: if let Switch::Enabled(foveation_vars) =
@@ -382,7 +418,7 @@ async fn connection_pipeline(
         }
     };
 
-    let time_sync_send_loop = {
+    /*let time_sync_send_loop = {
         let control_sender = Arc::clone(&control_sender);
         async move {
             let (data_sender, mut data_receiver) = tmpsc::unbounded_channel();
@@ -399,7 +435,7 @@ async fn connection_pipeline(
 
             Ok(())
         }
-    };
+    };*/
 
     let video_error_report_send_loop = {
         let control_sender = Arc::clone(&control_sender);
@@ -694,7 +730,33 @@ async fn connection_pipeline(
                                 //     SERVER_RESTART_MESSAGE
                                 // )?;
                                 break Ok(());
-                            }
+                            },
+       Ok(ServerControlPacket::InitializeDecoder { config_buffer }) => {
+                println!("Config received");
+                //unsafe {
+                let mut buffer = vec![0_u8; std::mem::size_of::<VideoFrame>() + config_buffer.len()];//: Vec<u8> = Vec::with_capacity(config_buffer.len() + std::mem::size_of::<VideoFrame>()); //= [0_u8; 1024].to_vec();
+                let header = VideoFrame {
+                    type_: 9, // ALVR_PACKET_TYPE_VIDEO_FRAME
+                    packetCounter: 0,//packet.header.packet_counter,
+                    trackingFrameIndex: 0,//packet.header.tracking_frame_index,
+                    videoFrameIndex: 0,//packet.header.video_frame_index,
+                    sentTime: 0,//packet.header.sent_time,
+                    frameByteSize: config_buffer.len() as u32,//packet.header.frame_byte_size,
+                    fecIndex: 0,//packet.header.fec_index,
+                    fecPercentage: 0,//packet.header.fec_percentage,
+                };
+
+                buffer[..std::mem::size_of::<VideoFrame>()].copy_from_slice(unsafe {
+                    &std::mem::transmute::<_, [u8; std::mem::size_of::<VideoFrame>()]>(header)
+                });
+                buffer[std::mem::size_of::<VideoFrame>()..].copy_from_slice(&config_buffer);
+
+                legacy_receive_data_sender.lock().await.send(buffer).ok();
+                //crate::alxr_on_receive(buffer.as_ptr(), std::mem::size_of::<VideoFrame>() as u32 + config_buffer.len() as u32); 
+                //};
+        //decoder::create_decoder(config_buffer);
+        //break Ok(());
+        },
                             /*Ok(ServerControlPacket::TimeSync(data)) => {
                                 let time_sync = TimeSync {
                                     type_: 7, // ALVR_PACKET_TYPE_TIME_SYNC
@@ -767,7 +829,7 @@ async fn connection_pipeline(
         res = spawn_cancelable(tracking_loop) => res,
         res = spawn_cancelable(playspace_sync_loop) => res,
         res = spawn_cancelable(input_send_loop) => res,
-        res = spawn_cancelable(time_sync_send_loop) => res,
+//        res = spawn_cancelable(time_sync_send_loop) => res,
         res = spawn_cancelable(video_error_report_send_loop) => res,
         res = spawn_cancelable(views_config_send_loop) => res,
         res = spawn_cancelable(battery_send_loop) => res,

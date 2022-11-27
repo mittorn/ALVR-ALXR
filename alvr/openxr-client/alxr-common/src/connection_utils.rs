@@ -1,11 +1,27 @@
 use crate::APP_CONFIG;
 use alvr_common::prelude::*;
+use alvr_common::ALVR_NAME;
+use alvr_common::ALVR_VERSION;
+use alvr_common::hash_string;
 use alvr_sockets::{
     ClientHandshakePacket, HandshakePacket, ServerHandshakePacket, CONTROL_PORT, LOCAL_IP,
     MAX_HANDSHAKE_PACKET_SIZE_BYTES,
 };
 use std::{net::Ipv4Addr, time::Duration};
 use tokio::{net::UdpSocket, time};
+
+
+pub fn protocol_id() -> u64 {
+	18166762639281986762
+/*    let protocol_string = if ALVR_VERSION.pre.is_empty() {
+        ALVR_VERSION.major.to_string()
+    } else {
+        format!("{}-{}", ALVR_VERSION.major, ALVR_VERSION.pre)
+    };
+
+    hash_string(&protocol_string)*/
+}
+
 
 const CLIENT_HANDSHAKE_RESEND_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -28,14 +44,19 @@ pub async fn announce_client_loop(
     let mut handshake_socket = trace_err!(UdpSocket::bind((LOCAL_IP, control_port)).await)?;
     trace_err!(handshake_socket.set_broadcast(true))?;
 
-    let client_handshake_packet = trace_err!(bincode::serialize(&HandshakePacket::Client(
-        handshake_packet
-    )))?;
+    //let client_handshake_packet = trace_err!(bincode::serialize(&HandshakePacket::Client(
+     //   handshake_packet
+    //)))?;
+        let mut packet = [0; 56];
+        packet[0..ALVR_NAME.len()].copy_from_slice(ALVR_NAME.as_bytes());
+        packet[16..24].copy_from_slice(&protocol_id().to_le_bytes());
+        packet[24..24 + handshake_packet.hostname.len()].copy_from_slice(handshake_packet.hostname.as_bytes());
+
 
     loop {
         let broadcast_result = handshake_socket
             .send_to(
-                &client_handshake_packet,
+                &packet,
                 (Ipv4Addr::BROADCAST, CONTROL_PORT),
             )
             .await;
